@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+DEFAULT_GIT_NAME="Vimaka Systems"
+DEFAULT_GIT_EMAIL="vimakasystems@gmail.com"
+
+help() {
+  cat <<'EOF'
+CerebroBrasil Azure CLI Connector
+
+Uso:
+  cerebrobrasil-azure login
+  cerebrobrasil-azure status
+  cerebrobrasil-azure subscriptions
+  cerebrobrasil-azure set-subscription <subscription-id-ou-nome>
+  cerebrobrasil-azure git-setup [nome] [email]
+  cerebrobrasil-azure doctor
+EOF
+}
+
+require_az() {
+  command -v az >/dev/null 2>&1 || {
+    echo "Azure CLI não encontrado. Execute o install.sh primeiro."
+    exit 1
+  }
+}
+
+doctor() {
+  for cmd in az git curl; do
+    if command -v "$cmd" >/dev/null 2>&1; then
+      echo "$cmd: OK"
+    else
+      echo "$cmd: NÃO INSTALADO"
+    fi
+  done
+}
+
+login() {
+  require_az
+  az login
+}
+
+status() {
+  require_az
+  az account show --query '{subscription:name,subscriptionId:id,tenantId:tenantId,user:user.name,state:state}' -o table
+}
+
+subscriptions() {
+  require_az
+  az account list --query '[].{Name:name,SubscriptionId:id,TenantId:tenantId,Default:isDefault,State:state}' -o table
+}
+
+set_subscription() {
+  require_az
+  local sub="${1:-}"
+  if [[ -z "$sub" ]]; then
+    echo "Informe o nome ou ID da subscription."
+    exit 1
+  fi
+  az account set --subscription "$sub"
+  status
+}
+
+git_setup() {
+  local name="${1:-$DEFAULT_GIT_NAME}"
+  local email="${2:-$DEFAULT_GIT_EMAIL}"
+  git config --global user.name "$name"
+  git config --global user.email "$email"
+  git config --global init.defaultBranch main
+  git config --global fetch.prune true
+  echo "Git configurado: $name <$email>"
+}
+
+case "${1:-help}" in
+  login) login ;;
+  status) status ;;
+  subscriptions) subscriptions ;;
+  set-subscription) set_subscription "${2:-}" ;;
+  git-setup) git_setup "${2:-$DEFAULT_GIT_NAME}" "${3:-$DEFAULT_GIT_EMAIL}" ;;
+  doctor) doctor ;;
+  help|-h|--help) help ;;
+  *) help; exit 1 ;;
+esac
