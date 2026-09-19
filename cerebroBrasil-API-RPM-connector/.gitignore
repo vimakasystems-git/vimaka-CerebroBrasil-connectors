@@ -1,0 +1,8 @@
+dist/
+*.rpm
+*.src.rpm
+.env
+.env.*
+secrets/
+credentials/
+token
