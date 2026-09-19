@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+detect() {
+  echo "Kernel: $(uname -s)"
+  echo "Architecture: $(uname -m)"
+  if [[ -r /etc/os-release ]]; then
+    . /etc/os-release
+    echo "Distribution: ${PRETTY_NAME:-${ID:-unknown}}"
+    echo "ID: ${ID:-unknown}"
+    echo "Version: ${VERSION_ID:-unknown}"
+  else
+    echo "Distribution: unknown"
+  fi
+}
+
+install_prereqs() {
+  [[ -r /etc/os-release ]] && . /etc/os-release || ID=unknown
+  case "${ID:-unknown}" in
+    fedora|rhel|centos|rocky|almalinux|amzn)
+      sudo dnf install -y curl ca-certificates git
+      ;;
+    opensuse*|sles)
+      sudo zypper --non-interactive install curl ca-certificates git
+      ;;
+    ubuntu|debian|linuxmint|pop)
+      sudo apt-get update
+      sudo DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates git
+      ;;
+    arch|manjaro)
+      sudo pacman -Sy --needed --noconfirm curl ca-certificates git
+      ;;
+    *)
+      echo "Unknown package manager profile. curl must already be installed."
+      ;;
+  esac
+}
+
+install_codex() {
+  if [[ "${EUID}" -eq 0 ]]; then
+    echo "Run 'cerebrobrasil-codex install' as your normal user, not root."
+    exit 1
+  fi
+  detect
+  install_prereqs
+  command -v curl >/dev/null || { echo "curl is required."; exit 1; }
+  echo "Installing/updating Codex using OpenAI's official installer..."
+  curl -fsSL https://chatgpt.com/codex/install.sh | sh
+  export PATH="$HOME/.local/bin:$HOME/bin:$PATH"
+  for rc in "$HOME/.bashrc" "$HOME/.profile"; do
+    touch "$rc"
+    grep -q 'CerebroBrasil Codex PATH' "$rc" 2>/dev/null || cat >> "$rc" <<'EOF'
+
+# CerebroBrasil Codex PATH
+export PATH="$HOME/.local/bin:$HOME/bin:$PATH"
+EOF
+  done
+  hash -r 2>/dev/null || true
+  command -v codex >/dev/null && codex --version || {
+    echo "Reload your shell with: source ~/.bashrc"
+  }
+}
+
+doctor() {
+  detect
+  echo "curl: $(command -v curl || echo missing)"
+  echo "git: $(command -v git || echo missing)"
+  echo "codex: $(command -v codex || echo not-installed)"
+  command -v codex >/dev/null && codex --version || true
+}
+
+case "${1:-help}" in
+  detect) detect ;;
+  install|update) install_codex ;;
+  doctor) doctor ;;
+  run) shift; exec codex "$@" ;;
+  help|-h|--help)
+    echo "Usage: cerebrobrasil-codex {detect|install|update|doctor|run}"
+    ;;
+  *) echo "Unknown command"; exit 1 ;;
+esac
