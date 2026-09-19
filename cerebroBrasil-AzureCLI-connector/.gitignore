@@ -1,0 +1,8 @@
+*.rpm
+*.tar.gz
+*.zip
+.env
+.env.*
+secrets/
+credentials/
+.azure/
