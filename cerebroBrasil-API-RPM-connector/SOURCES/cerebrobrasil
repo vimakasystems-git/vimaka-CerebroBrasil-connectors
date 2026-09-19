@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+APP="cerebrobrasil"
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/cerebrobrasil"
+URL_FILE="$CONFIG_DIR/api-url"
+TOKEN_FILE="$CONFIG_DIR/token"
+DEFAULT_URL="https://cerebrobrasil.com.br"
+
+mkdir -p "$CONFIG_DIR"
+chmod 700 "$CONFIG_DIR" 2>/dev/null || true
+
+api_url() {
+  [[ -s "$URL_FILE" ]] && cat "$URL_FILE" || printf '%s' "$DEFAULT_URL"
+}
+
+token() {
+  [[ -s "$TOKEN_FILE" ]] && cat "$TOKEN_FILE" || true
+}
+
+detect() {
+  echo "Kernel: $(uname -s)"
+  echo "Architecture: $(uname -m)"
+  if [[ -r /etc/os-release ]]; then
+    . /etc/os-release
+    echo "Distribution: ${PRETTY_NAME:-unknown}"
+    echo "ID: ${ID:-unknown}"
+    echo "Version: ${VERSION_ID:-unknown}"
+  fi
+}
+
+doctor() {
+  detect
+  echo "curl: $(command -v curl || echo missing)"
+  echo "jq: $(command -v jq || echo missing)"
+  echo "API URL: $(api_url)"
+  [[ -s "$TOKEN_FILE" ]] && echo "API token: configured" || echo "API token: not configured"
+}
+
+set_url() {
+  local url="${1:-}"
+  [[ "$url" =~ ^https?:// ]] || { echo "Usage: cerebrobrasil config set-url https://host"; exit 1; }
+  printf '%s\n' "${url%/}" > "$URL_FILE"
+  chmod 600 "$URL_FILE"
+  echo "API URL configured."
+}
+
+set_token() {
+  read -rsp "CerebroBrasil API token: " value
+  echo
+  [[ -n "$value" ]] || { echo "Token cannot be empty."; exit 1; }
+  umask 077
+  printf '%s' "$value" > "$TOKEN_FILE"
+  chmod 600 "$TOKEN_FILE"
+  echo "Token stored locally in $TOKEN_FILE"
+}
+
+clear_token() {
+  rm -f "$TOKEN_FILE"
+  echo "Local API token removed."
+}
+
+request() {
+  local method="$1" path="$2" data="${3:-}"
+  local base="$(api_url)" t="$(token)"
+  local -a args=(-fsS -X "$method" -H "Accept: application/json")
+  [[ -n "$t" ]] && args+=(-H "Authorization: Bearer $t")
+  if [[ -n "$data" ]]; then
+    args+=(-H "Content-Type: application/json" --data "$data")
+  fi
+  curl "${args[@]}" "${base}${path}"
+}
+
+ping() {
+  local base="$(api_url)"
+  echo "Testing $base ..."
+  curl -sS -o /dev/null -w 'HTTP %{http_code} | %{time_total}s\n' "$base/"
+}
+
+case "${1:-help}" in
+  detect) detect ;;
+  doctor) doctor ;;
+  ping) ping ;;
+  config)
+    case "${2:-}" in
+      set-url) set_url "${3:-}" ;;
+      set-token) set_token ;;
+      clear-token) clear_token ;;
+      show) echo "API URL: $(api_url)"; [[ -s "$TOKEN_FILE" ]] && echo "Token: configured" || echo "Token: not configured" ;;
+      *) echo "Usage: cerebrobrasil config {set-url URL|set-token|clear-token|show}"; exit 1 ;;
+    esac ;;
+  get) request GET "${2:-/}" ;;
+  post) request POST "${2:-/}" "${3:-}" ;;
+  put) request PUT "${2:-/}" "${3:-}" ;;
+  delete) request DELETE "${2:-/}" ;;
+  help|-h|--help)
+    cat <<'EOF'
+CerebroBrasil API CLI
+  cerebrobrasil detect
+  cerebrobrasil doctor
+  cerebrobrasil ping
+  cerebrobrasil config show
+  cerebrobrasil config set-url URL
+  cerebrobrasil config set-token
+  cerebrobrasil config clear-token
+  cerebrobrasil get PATH
+  cerebrobrasil post PATH JSON
+  cerebrobrasil put PATH JSON
+  cerebrobrasil delete PATH
+EOF
+    ;;
+  *) echo "Unknown command. Use: cerebrobrasil help"; exit 1 ;;
+esac
