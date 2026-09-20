@@ -54,3 +54,22 @@ chmod +x build-rpm.sh SOURCES/cerebrobrasil
 Output is written to `dist/`.
 
 > The public site did not expose discoverable CerebroBrasil API documentation during creation of this connector, so endpoint names such as `/api/v1/health` are examples until the application's actual API contract is confirmed.
+
+## Security and local bridge
+
+Only HTTPS is accepted for remote APIs. HTTP is allowed on localhost for development.
+Paths must start with one `/`; redirects are not followed. The stored Bearer token is
+passed to curl on stdin, not in process arguments. Requests have connection/total timeouts.
+Configuration is written atomically with private permissions; symlinked configuration is rejected.
+
+For the local bridge in the repository root:
+
+```bash
+cerebrobrasil config set-url http://127.0.0.1:8080
+cerebrobrasil config set-token
+cerebrobrasil get /health
+cerebrobrasil post /v1/builder/plan '{"briefing":"Site institucional"}'
+```
+
+Enter the locally configured INTERNAL_API_TOKEN at the hidden prompt. Do not place it
+in command arguments or a browser. Planning needs a configured upstream adapter.

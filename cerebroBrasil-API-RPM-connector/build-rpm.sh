@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 command -v rpmbuild >/dev/null || {
   if command -v dnf >/dev/null; then
     sudo dnf install -y rpm-build rpmdevtools

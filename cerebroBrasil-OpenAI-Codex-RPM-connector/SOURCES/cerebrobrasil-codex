@@ -5,6 +5,7 @@ detect() {
   echo "Kernel: $(uname -s)"
   echo "Architecture: $(uname -m)"
   if [[ -r /etc/os-release ]]; then
+    # shellcheck source=/dev/null
     . /etc/os-release
     echo "Distribution: ${PRETTY_NAME:-${ID:-unknown}}"
     echo "ID: ${ID:-unknown}"
@@ -15,7 +16,12 @@ detect() {
 }
 
 install_prereqs() {
-  [[ -r /etc/os-release ]] && . /etc/os-release || ID=unknown
+  if [[ -r /etc/os-release ]]; then
+    # shellcheck source=/dev/null
+    . /etc/os-release
+  else
+    ID=unknown
+  fi
   case "${ID:-unknown}" in
     fedora|rhel|centos|rocky|almalinux|amzn)
       sudo dnf install -y curl ca-certificates git
@@ -28,7 +34,7 @@ install_prereqs() {
       sudo DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates git
       ;;
     arch|manjaro)
-      sudo pacman -Sy --needed --noconfirm curl ca-certificates git
+      sudo pacman -S --needed --noconfirm curl ca-certificates git
       ;;
     *)
       echo "Unknown package manager profile. curl must already be installed."
@@ -45,7 +51,13 @@ install_codex() {
   install_prereqs
   command -v curl >/dev/null || { echo "curl is required."; exit 1; }
   echo "Installing/updating Codex using OpenAI's official installer..."
-  curl -fsSL https://chatgpt.com/codex/install.sh | sh
+  (
+    umask 077
+    installer_file="$(mktemp)"
+    trap 'rm -f -- "$installer_file"' EXIT
+    curl --proto '=https' --proto-redir '=https' --connect-timeout 10 --max-time 120 -fsSL https://chatgpt.com/codex/install.sh -o "$installer_file"
+    sh "$installer_file"
+  )
   export PATH="$HOME/.local/bin:$HOME/bin:$PATH"
   for rc in "$HOME/.bashrc" "$HOME/.profile"; do
     touch "$rc"
@@ -56,9 +68,11 @@ export PATH="$HOME/.local/bin:$HOME/bin:$PATH"
 EOF
   done
   hash -r 2>/dev/null || true
-  command -v codex >/dev/null && codex --version || {
+  if command -v codex >/dev/null; then
+    codex --version
+  else
     echo "Reload your shell with: source ~/.bashrc"
-  }
+  fi
 }
 
 doctor() {
@@ -66,7 +80,7 @@ doctor() {
   echo "curl: $(command -v curl || echo missing)"
   echo "git: $(command -v git || echo missing)"
   echo "codex: $(command -v codex || echo not-installed)"
-  command -v codex >/dev/null && codex --version || true
+  if command -v codex >/dev/null; then codex --version; else return 1; fi
 }
 
 case "${1:-help}" in

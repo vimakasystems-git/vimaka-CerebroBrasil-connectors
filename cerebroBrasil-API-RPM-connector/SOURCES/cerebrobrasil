@@ -1,27 +1,29 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-APP="cerebrobrasil"
+umask 077
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/cerebrobrasil"
 URL_FILE="$CONFIG_DIR/api-url"
 TOKEN_FILE="$CONFIG_DIR/token"
 DEFAULT_URL="https://cerebrobrasil.com.br"
 
+[[ ! -L "$CONFIG_DIR" && ! -L "$URL_FILE" && ! -L "$TOKEN_FILE" ]] || { echo "Refusing symlinked configuration." >&2; exit 1; }
 mkdir -p "$CONFIG_DIR"
-chmod 700 "$CONFIG_DIR" 2>/dev/null || true
+chmod 700 "$CONFIG_DIR"
 
 api_url() {
   [[ -s "$URL_FILE" ]] && cat "$URL_FILE" || printf '%s' "$DEFAULT_URL"
 }
 
 token() {
-  [[ -s "$TOKEN_FILE" ]] && cat "$TOKEN_FILE" || true
+  if [[ -s "$TOKEN_FILE" ]]; then cat "$TOKEN_FILE"; fi
 }
 
 detect() {
   echo "Kernel: $(uname -s)"
   echo "Architecture: $(uname -m)"
   if [[ -r /etc/os-release ]]; then
+    # shellcheck source=/dev/null
     . /etc/os-release
     echo "Distribution: ${PRETTY_NAME:-unknown}"
     echo "ID: ${ID:-unknown}"
@@ -37,21 +39,35 @@ doctor() {
   [[ -s "$TOKEN_FILE" ]] && echo "API token: configured" || echo "API token: not configured"
 }
 
+validate_url() {
+  local url="$1"
+  local https='^https://[A-Za-z0-9][A-Za-z0-9.-]*(:[0-9]{1,5})?(/[A-Za-z0-9._~/%+-]*)?$'
+  local loopback='^http://(localhost|127\.0\.0\.1|\[::1\])(:[0-9]{1,5})?(/[A-Za-z0-9._~/%+-]*)?$'
+  [[ "$url" =~ $https || "$url" =~ $loopback ]] || { echo "Use HTTPS (HTTP only on localhost), without credentials/query/fragment." >&2; return 1; }
+}
+
+save_private() {
+  local target="$1" value="$2" temporary
+  temporary="$(mktemp "$CONFIG_DIR/.config.XXXXXX")"
+  if ! printf '%s' "$value" > "$temporary" || ! mv -f -- "$temporary" "$target"; then
+    rm -f -- "$temporary"
+    return 1
+  fi
+}
+
 set_url() {
   local url="${1:-}"
-  [[ "$url" =~ ^https?:// ]] || { echo "Usage: cerebrobrasil config set-url https://host"; exit 1; }
-  printf '%s\n' "${url%/}" > "$URL_FILE"
-  chmod 600 "$URL_FILE"
+  validate_url "$url"
+  save_private "$URL_FILE" "${url%/}"
   echo "API URL configured."
 }
 
 set_token() {
+  local value
   read -rsp "CerebroBrasil API token: " value
   echo
-  [[ -n "$value" ]] || { echo "Token cannot be empty."; exit 1; }
-  umask 077
-  printf '%s' "$value" > "$TOKEN_FILE"
-  chmod 600 "$TOKEN_FILE"
+  [[ "$value" =~ ^[A-Za-z0-9._~+/-]+=*$ ]] || { echo "Invalid Bearer token." >&2; exit 1; }
+  save_private "$TOKEN_FILE" "$value"
   echo "Token stored locally in $TOKEN_FILE"
 }
 
@@ -61,20 +77,30 @@ clear_token() {
 }
 
 request() {
-  local method="$1" path="$2" data="${3:-}"
-  local base="$(api_url)" t="$(token)"
-  local -a args=(-fsS -X "$method" -H "Accept: application/json")
-  [[ -n "$t" ]] && args+=(-H "Authorization: Bearer $t")
+  local method="$1" path="$2" data="${3:-}" base t
+  base="$(api_url)"
+  t="$(token)"
+  validate_url "$base"
+  [[ "$path" == /* && "$path" != //* && ! "$path" =~ [[:space:]\\] ]] || { echo "PATH must start with a single / and contain no whitespace or backslashes." >&2; exit 1; }
+  [[ -z "$t" || "$t" =~ ^[A-Za-z0-9._~+/-]+=*$ ]] || { echo "Invalid stored token." >&2; exit 1; }
+  local -a args=(-q -fsS --globoff --connect-timeout 10 --max-time 60 --proto '=https,http' -X "$method" -H 'Accept: application/json')
   if [[ -n "$data" ]]; then
-    args+=(-H "Content-Type: application/json" --data "$data")
+    args+=(-H 'Content-Type: application/json' --data-raw "$data")
   fi
-  curl "${args[@]}" "${base}${path}"
+  if [[ -n "$t" ]]; then
+    # Header goes over stdin, never through argv/process listings; no redirects are followed.
+    printf 'Authorization: Bearer %s\n' "$t" | curl "${args[@]}" -H @- --url "${base}${path}"
+  else
+    curl "${args[@]}" --url "${base}${path}"
+  fi
 }
 
 ping() {
-  local base="$(api_url)"
+  local base
+  base="$(api_url)"
+  validate_url "$base"
   echo "Testing $base ..."
-  curl -sS -o /dev/null -w 'HTTP %{http_code} | %{time_total}s\n' "$base/"
+  curl -q -fsS --globoff --connect-timeout 10 --max-time 60 --proto '=https,http' -o /dev/null -w 'HTTP %{http_code} | %{time_total}s\n' --url "$base/"
 }
 
 case "${1:-help}" in
