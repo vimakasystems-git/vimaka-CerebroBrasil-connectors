@@ -15,9 +15,10 @@ ARCH="$(uname -m)"
 [[ "$OS" == "Linux" ]] || { echo "This connector targets Linux."; exit 1; }
 
 if [[ -r /etc/os-release ]]; then
+  # shellcheck source=/dev/null
   . /etc/os-release
 else
-  ID="unknown"; VERSION_ID="unknown"; PRETTY_NAME="Unknown Linux"
+  ID="unknown"; PRETTY_NAME="Unknown Linux"
 fi
 
 echo "CerebroBrasil Codex Connector"
@@ -34,7 +35,7 @@ install_prereqs() {
       sudo dnf install -y curl ca-certificates git
       ;;
     arch|manjaro)
-      sudo pacman -Sy --needed --noconfirm curl ca-certificates git
+      sudo pacman -S --needed --noconfirm curl ca-certificates git
       ;;
     opensuse*|sles)
       sudo zypper --non-interactive install curl ca-certificates git
@@ -50,7 +51,13 @@ install_prereqs
 command -v curl >/dev/null || { echo "curl is required."; exit 1; }
 
 echo "Installing/updating OpenAI Codex CLI using the official installer..."
-curl -fsSL https://chatgpt.com/codex/install.sh | sh
+(
+    umask 077
+    installer_file="$(mktemp)"
+    trap 'rm -f -- "$installer_file"' EXIT
+    curl --proto '=https' --proto-redir '=https' --connect-timeout 10 --max-time 120 -fsSL https://chatgpt.com/codex/install.sh -o "$installer_file"
+    sh "$installer_file"
+  )
 
 # Common user install paths.
 export PATH="$HOME/.local/bin:$HOME/bin:$PATH"

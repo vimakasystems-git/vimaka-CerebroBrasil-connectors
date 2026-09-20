@@ -26,13 +26,16 @@ require_az() {
 }
 
 doctor() {
+  local missing=0
   for cmd in az git curl; do
     if command -v "$cmd" >/dev/null 2>&1; then
       echo "$cmd: OK"
     else
       echo "$cmd: NÃO INSTALADO"
+      missing=1
     fi
   done
+  return "$missing"
 }
 
 login() {

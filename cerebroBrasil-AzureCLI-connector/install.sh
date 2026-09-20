@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
 if [[ ${EUID} -ne 0 ]]; then
   echo "Execute com sudo: sudo ./install.sh"
   exit 1
@@ -35,7 +37,7 @@ fi
 
 dnf -y install azure-cli
 
-install -m 0755 cerebrobrasil-azure /usr/local/bin/cerebrobrasil-azure
+install -m 0755 "$SCRIPT_DIR/cerebrobrasil-azure" /usr/local/bin/cerebrobrasil-azure
 
 echo "Azure CLI instalado."
 echo "Use: cerebrobrasil-azure login"

@@ -1,0 +1,5 @@
+/data/
+*.sqlite*
+*.token
+.env
+coverage/

@@ -1,0 +1,27 @@
+{
+  "name": "@vimaka/cerebrobrasil-bydodoo-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "check": "tsc --noEmit && npm --prefix platform run check && node scripts/check-shell.mjs",
+    "build": "tsc",
+    "test": "npm run build && node --test test/*.test.mjs && npm --prefix platform test",
+    "test:unit": "npm run build && node --test test/unit.test.mjs",
+    "test:integration": "npm run build && node --test test/integration.test.mjs",
+    "test:regression": "npm run build && node --test test/regression.test.mjs && npm --prefix platform test",
+    "dev": "npm run build && node --env-file=.env --watch dist/main.js",
+    "start": "node --env-file=.env dist/main.js",
+    "check:secrets": "node scripts/security-check.mjs",
+    "benchmark": "npm run build && node scripts/benchmark.mjs",
+    "lint:shell": "node scripts/check-shell.mjs --lint"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.2",
+    "typescript": "7.0.2"
+  }
+}
